@@ -1,0 +1,712 @@
+/* ============================================================
+   NEUMORPHIC PROMPT HUB — style.css
+   A soft, neumorphic design system for the Chrome Extension.
+   ============================================================ */
+
+/* ── CSS Custom Properties (Design Tokens) ── */
+:root {
+  /* Neumorphic palette */
+  --bg:           #e0e0e0;
+  --bg-light:     #e8e8e8;
+  --bg-dark:      #d4d4d4;
+  --text:         #444444;
+  --text-muted:   #888888;
+  --text-light:   #aaaaaa;
+  --accent:       #6c63ff;     /* Primary action color */
+  --accent-hover: #5a52e0;
+  --danger:       #e05555;
+  --danger-hover: #c94444;
+  --success:      #4caf50;
+  --favorite:     #f5a623;
+
+  /* Neumorphic shadows */
+  --shadow-raised:  5px 5px 10px #bebebe, -5px -5px 10px #ffffff;
+  --shadow-inset:   inset 3px 3px 6px #bebebe, inset -3px -3px 6px #ffffff;
+  --shadow-soft:    3px 3px 6px #bebebe, -3px -3px 6px #ffffff;
+  --shadow-btn:     4px 4px 8px #bebebe, -4px -4px 8px #ffffff;
+  --shadow-btn-pressed: inset 3px 3px 6px #bebebe, inset -3px -3px 6px #ffffff;
+
+  /* Borders & radii */
+  --radius:       14px;
+  --radius-sm:    10px;
+  --radius-xs:    8px;
+
+  /* Spacing */
+  --gap:          12px;
+  --gap-sm:       8px;
+
+  /* Typography */
+  --font: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+}
+
+/* ── Reset & Base ── */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  width: 800px;
+  height: 550px;
+  background: var(--bg);
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── App Container: 3-Column Grid ── */
+.app-container {
+  display: grid;
+  grid-template-columns: 170px 220px 1fr;
+  height: 100%;
+  padding: 12px;
+  gap: var(--gap);
+}
+
+
+/* ============================================================
+   1. LEFT SIDEBAR
+   ============================================================ */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  padding: 14px 10px;
+  background: var(--bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-raised);
+}
+
+/* Logo area */
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 12px;
+  color: var(--accent);
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  margin-bottom: 4px;
+}
+
+.logo-text {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--text);
+}
+
+/* Sidebar navigation */
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+/* Nav buttons */
+.nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg);
+  color: var(--text-muted);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nav-btn:hover {
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+}
+
+.nav-btn.active {
+  color: var(--accent);
+  box-shadow: var(--shadow-btn-pressed);
+  font-weight: 600;
+}
+
+.nav-btn svg {
+  flex-shrink: 0;
+}
+
+/* New Prompt button */
+.new-prompt-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 11px 12px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 3px 3px 8px rgba(108, 99, 255, 0.35), -2px -2px 6px rgba(255,255,255,0.6);
+  transition: all 0.2s ease;
+}
+
+.new-prompt-btn:hover {
+  background: var(--accent-hover);
+}
+
+.new-prompt-btn:active {
+  box-shadow: inset 2px 2px 5px rgba(0,0,0,0.2);
+}
+
+
+/* ============================================================
+   2. CENTER PANEL — Prompt List
+   ============================================================ */
+.list-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  padding: 14px 10px;
+  background: var(--bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-raised);
+  overflow: hidden;
+}
+
+/* Search bar */
+.search-wrapper {
+  position: relative;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-light);
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px 12px 10px 36px;
+  background: var(--bg);
+  color: var(--text);
+  border: none;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-inset);
+  font-family: var(--font);
+  font-size: 12.5px;
+  outline: none;
+  transition: box-shadow 0.2s;
+}
+
+.search-input::placeholder {
+  color: var(--text-light);
+}
+
+.search-input:focus {
+  box-shadow: var(--shadow-inset), 0 0 0 2px rgba(108, 99, 255, 0.15);
+}
+
+/* List header */
+.list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 6px;
+}
+
+.list-header span:first-child {
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.list-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  background: var(--bg);
+  border-radius: 10px;
+  box-shadow: var(--shadow-soft);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Category list (sub-navigation within Categories view) */
+.category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 120px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.category-list .cat-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  background: var(--bg);
+  border: none;
+  border-radius: var(--radius-xs);
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.category-list .cat-item:hover {
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+}
+
+.category-list .cat-item.active {
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: var(--shadow-btn-pressed);
+}
+
+.cat-item .cat-count {
+  font-size: 11px;
+  color: var(--text-light);
+}
+
+/* Prompt list */
+.prompt-list {
+  flex: 1;
+  list-style: none;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 2px;
+}
+
+/* Custom scrollbar */
+.prompt-list::-webkit-scrollbar,
+.category-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.prompt-list::-webkit-scrollbar-track,
+.category-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.prompt-list::-webkit-scrollbar-thumb,
+.category-list::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+/* Individual prompt item */
+.prompt-item {
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: none;
+}
+
+.prompt-item:hover {
+  box-shadow: var(--shadow-soft);
+}
+
+.prompt-item.selected {
+  box-shadow: var(--shadow-btn-pressed);
+  color: var(--accent);
+}
+
+.prompt-item .item-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 3px;
+}
+
+.prompt-item .item-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-light);
+}
+
+.prompt-item .item-meta .fav-indicator {
+  color: var(--favorite);
+  font-size: 12px;
+}
+
+/* Empty list placeholder */
+.list-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: var(--text-light);
+  font-size: 12px;
+  font-style: italic;
+}
+
+
+/* ============================================================
+   3. RIGHT PANEL — Editor / Viewer
+   ============================================================ */
+.editor-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  background: var(--bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-raised);
+  overflow: hidden;
+}
+
+/* Empty state */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 12px;
+  color: var(--text-light);
+  font-size: 13px;
+}
+
+/* Editor form layout */
+.editor-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: var(--gap);
+  overflow: hidden;
+}
+
+/* Title row with favorite toggle */
+.editor-top-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  background: var(--bg);
+  color: var(--text-light);
+  border: none;
+  border-radius: var(--radius-xs);
+  box-shadow: var(--shadow-btn);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.fav-btn:hover {
+  color: var(--favorite);
+}
+
+.fav-btn:active {
+  box-shadow: var(--shadow-btn-pressed);
+}
+
+.fav-btn.active {
+  color: var(--favorite);
+}
+
+.fav-btn.active svg {
+  fill: var(--favorite);
+}
+
+/* Title input */
+.editor-title {
+  flex: 1;
+  padding: 10px 14px;
+  background: var(--bg);
+  color: var(--text);
+  border: none;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-inset);
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+}
+
+.editor-title:focus {
+  box-shadow: var(--shadow-inset), 0 0 0 2px rgba(108, 99, 255, 0.15);
+}
+
+.editor-title::placeholder {
+  color: var(--text-light);
+  font-weight: 400;
+}
+
+/* Category row */
+.editor-category-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-category-row label {
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.category-select {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: none;
+  border-radius: var(--radius-xs);
+  box-shadow: var(--shadow-inset);
+  font-family: var(--font);
+  font-size: 12.5px;
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
+}
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  background: var(--bg);
+  color: var(--text-muted);
+  border: none;
+  border-radius: var(--radius-xs);
+  box-shadow: var(--shadow-btn);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.icon-btn:hover {
+  color: var(--accent);
+}
+
+.icon-btn:active {
+  box-shadow: var(--shadow-btn-pressed);
+}
+
+/* Prompt body textarea */
+.editor-body {
+  flex: 1;
+  padding: 12px 14px;
+  background: var(--bg);
+  color: var(--text);
+  border: none;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-inset);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+}
+
+.editor-body:focus {
+  box-shadow: var(--shadow-inset), 0 0 0 2px rgba(108, 99, 255, 0.15);
+}
+
+.editor-body::placeholder {
+  color: var(--text-light);
+}
+
+/* Action buttons row */
+.editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-sm);
+}
+
+.action-right-group {
+  display: flex;
+  gap: var(--gap-sm);
+}
+
+/* Generic action button */
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  background: var(--bg);
+  color: var(--text-muted);
+  border: none;
+  border-radius: var(--radius-xs);
+  box-shadow: var(--shadow-btn);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.action-btn:hover {
+  color: var(--text);
+}
+
+.action-btn:active {
+  box-shadow: var(--shadow-btn-pressed);
+}
+
+/* Primary button (Copy) */
+.primary-btn {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 3px 3px 8px rgba(108, 99, 255, 0.3), -2px -2px 6px rgba(255,255,255,0.6);
+}
+
+.primary-btn:hover {
+  background: var(--accent-hover);
+  color: #fff;
+}
+
+.primary-btn:active {
+  box-shadow: inset 2px 2px 5px rgba(0,0,0,0.2);
+}
+
+/* Copy success state */
+.primary-btn.copied {
+  background: var(--success);
+  box-shadow: 3px 3px 8px rgba(76, 175, 80, 0.3), -2px -2px 6px rgba(255,255,255,0.6);
+}
+
+/* Save button */
+.save-btn {
+  color: var(--accent);
+}
+
+.save-btn:hover {
+  color: var(--accent-hover);
+}
+
+/* Delete button */
+.delete-btn {
+  color: var(--danger);
+}
+
+.delete-btn:hover {
+  color: var(--danger-hover);
+}
+
+/* Trash-specific action row */
+.trash-actions {
+  border-top: 1px solid rgba(0,0,0,0.05);
+  padding-top: var(--gap);
+}
+
+
+/* ============================================================
+   4. MODAL (New Category)
+   ============================================================ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal-card {
+  width: 280px;
+  padding: 24px;
+  background: var(--bg);
+  border-radius: var(--radius);
+  box-shadow: 8px 8px 20px #b0b0b0, -8px -8px 20px #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal-card h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.modal-input {
+  padding: 10px 14px;
+  background: var(--bg);
+  color: var(--text);
+  border: none;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-inset);
+  font-family: var(--font);
+  font-size: 13px;
+  outline: none;
+}
+
+.modal-input:focus {
+  box-shadow: var(--shadow-inset), 0 0 0 2px rgba(108, 99, 255, 0.15);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+
+/* ============================================================
+   5. UTILITIES
+   ============================================================ */
+.hidden {
+  display: none !important;
+}
+
+/* Smooth transitions for view changes */
+.fade-in {
+  animation: fadeIn 0.15s ease-in;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Selection highlight color */
+::selection {
+  background: rgba(108, 99, 255, 0.2);
+}
