@@ -690,7 +690,44 @@ body {
 
 
 /* ============================================================
-   5. UTILITIES
+   5. SIDEBAR DATA ACTIONS (Export / Import)
+   ============================================================ */
+.data-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.data-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex: 1;
+  padding: 8px 6px;
+  background: var(--bg);
+  color: var(--text-muted);
+  border: none;
+  border-radius: var(--radius-xs);
+  box-shadow: var(--shadow-soft);
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.data-btn:hover {
+  color: var(--text);
+  box-shadow: var(--shadow-btn);
+}
+
+.data-btn:active {
+  box-shadow: var(--shadow-btn-pressed);
+}
+
+
+/* ============================================================
+   6. UTILITIES
    ============================================================ */
 .hidden {
   display: none !important;

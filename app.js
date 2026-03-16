@@ -1,7 +1,7 @@
 /* ============================================================
    NEUMORPHIC PROMPT HUB — app.js
    Core logic: CRUD operations, clipboard, search, persistence.
-   All data is stored via chrome.storage.local.
+   Data is synced to chrome.storage.sync with local fallback.
    ============================================================ */
 
 'use strict';
@@ -58,37 +58,66 @@ const DEFAULT_PROMPTS = [
 ];
 
 /* ============================================================
-   STORAGE — chrome.storage.local wrapper
+   STORAGE — chrome.storage.sync (primary) + local (fallback)
    ============================================================ */
 
 /**
- * Load all data from chrome.storage.local.
- * On first run, seeds default categories and sample prompts.
+ * Load data with migration strategy:
+ * 1. Try chrome.storage.sync first (cross-device data).
+ * 2. Fall back to chrome.storage.local (offline / legacy data).
+ * 3. If neither has data, seed defaults (first-time run).
  */
 async function loadData() {
-  return new Promise((resolve) => {
-    chrome.storage.local.get(['prompts', 'categories'], (result) => {
-      if (result.prompts && result.categories) {
-        // Existing data found
-        state.prompts = result.prompts;
-        state.categories = result.categories;
-      } else {
-        // First-time run — seed defaults
-        state.prompts = DEFAULT_PROMPTS;
-        state.categories = DEFAULT_CATEGORIES;
-        saveData();
-      }
-      resolve();
+  // Helper: wrap chrome.storage.*.get in a Promise
+  function getFrom(area) {
+    return new Promise((resolve) => {
+      area.get(['prompts', 'categories'], (result) => resolve(result));
     });
-  });
+  }
+
+  // 1. Try sync storage first
+  const syncResult = await getFrom(chrome.storage.sync);
+  if (syncResult.prompts && syncResult.categories) {
+    state.prompts = syncResult.prompts;
+    state.categories = syncResult.categories;
+    // Mirror to local for offline access
+    chrome.storage.local.set({ prompts: state.prompts, categories: state.categories });
+    return;
+  }
+
+  // 2. Fall back to local storage
+  const localResult = await getFrom(chrome.storage.local);
+  if (localResult.prompts && localResult.categories) {
+    state.prompts = localResult.prompts;
+    state.categories = localResult.categories;
+    // Migrate local data up to sync
+    saveTo(chrome.storage.sync);
+    return;
+  }
+
+  // 3. First-time run — seed defaults
+  state.prompts = DEFAULT_PROMPTS;
+  state.categories = DEFAULT_CATEGORIES;
+  saveData();
 }
 
-/** Persist current state to chrome.storage.local. */
+/** Write data to a specific storage area. */
+function saveTo(area) {
+  try {
+    area.set({ prompts: state.prompts, categories: state.categories });
+  } catch (_) {
+    // Silently ignore (e.g., sync quota exceeded)
+  }
+}
+
+/** Persist current state to both local and sync storage. */
 function saveData() {
-  chrome.storage.local.set({
-    prompts: state.prompts,
-    categories: state.categories
-  });
+  const payload = { prompts: state.prompts, categories: state.categories };
+  chrome.storage.local.set(payload);
+  // Write to sync; silently catch quota errors
+  try {
+    chrome.storage.sync.set(payload);
+  } catch (_) { /* sync unavailable or quota exceeded */ }
 }
 
 
@@ -120,6 +149,11 @@ const $categoryModal    = document.getElementById('categoryModal');
 const $newCategoryInput = document.getElementById('newCategoryInput');
 const $btnCancelCategory = document.getElementById('btnCancelCategory');
 const $btnConfirmCategory = document.getElementById('btnConfirmCategory');
+
+/* Data portability */
+const $btnExport    = document.getElementById('btnExport');
+const $btnImport    = document.getElementById('btnImport');
+const $importFile   = document.getElementById('importFile');
 
 
 /* ============================================================
@@ -515,6 +549,77 @@ function confirmNewCategory() {
 
 
 /* ============================================================
+   DATA PORTABILITY — Export / Import
+   ============================================================ */
+
+/**
+ * Export the current state (prompts + categories) as a
+ * formatted .json file download.
+ */
+function exportData() {
+  const exportPayload = {
+    version: '1.1.0',
+    exportedAt: new Date().toISOString(),
+    categories: state.categories,
+    prompts: state.prompts
+  };
+
+  const json = JSON.stringify(exportPayload, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+
+  // Create a temporary <a> to trigger the download
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `prompt-hub-backup-${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Import prompts from a .json file chosen by the user.
+ * Shows a confirm dialog before overwriting current data.
+ */
+function importData(file) {
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+
+      // Basic validation: must have prompts array and categories array
+      if (!Array.isArray(data.prompts) || !Array.isArray(data.categories)) {
+        alert('Invalid file format. Expected a Prompt Hub backup with "prompts" and "categories".');
+        return;
+      }
+
+      const count = data.prompts.length;
+      const ok = confirm(
+        `This will replace all your current data with ${count} prompt(s) ` +
+        `and ${data.categories.length} category/ies from the backup.\n\nContinue?`
+      );
+      if (!ok) return;
+
+      // Overwrite state
+      state.prompts = data.prompts;
+      state.categories = data.categories;
+
+      // Persist and re-render
+      saveData();
+      hideEditor();
+      renderList();
+    } catch (err) {
+      alert('Could not parse the file. Make sure it is a valid JSON backup.');
+    }
+  };
+  reader.readAsText(file);
+}
+
+
+/* ============================================================
    EVENT LISTENERS
    ============================================================ */
 
@@ -554,6 +659,15 @@ $newCategoryInput.addEventListener('keydown', (e) => {
 // Close modal on overlay click
 $categoryModal.addEventListener('click', (e) => {
   if (e.target === $categoryModal) closeCategoryModal();
+});
+
+// Data portability: Export / Import
+$btnExport.addEventListener('click', exportData);
+$btnImport.addEventListener('click', () => $importFile.click());
+$importFile.addEventListener('change', (e) => {
+  importData(e.target.files[0]);
+  // Reset so the same file can be re-imported if needed
+  e.target.value = '';
 });
 
 // Keyboard shortcut: Ctrl/Cmd + S to save
