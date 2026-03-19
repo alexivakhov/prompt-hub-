@@ -234,20 +234,6 @@
     </div>
   </div>
 
-  <!-- Variables Modal -->
-  <div id="variableModal" class="modal-overlay hidden">
-    <div class="modal-card">
-      <h3>Fill Variables</h3>
-      <div id="varInputs" class="modal-body-scroll">
-        <!-- Populated dynamically -->
-      </div>
-      <div class="modal-actions">
-        <button id="btnCancelVar" class="action-btn">Cancel</button>
-        <button id="btnConfirmVar" class="action-btn save-btn">Copy Processed</button>
-      </div>
-    </div>
-  </div>
-
   <script src="app.js"></script>
 </body>
 </html>

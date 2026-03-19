@@ -1,17 +1,17 @@
 {
   "manifest_version": 3,
   "name": "Neumorphic Prompt Hub",
-  "version": "1.1.0",
-  "description": "A clean, Neumorphic AI prompt manager. Save, organize, and quickly copy your favorite prompts.",
-  "permissions": [
-    "storage",
-    "unlimitedStorage",
-    "clipboardWrite"
-  ],
+  "version": "1.0",
+  "description": "A minimalist, neumorphic manager for your AI prompts.",
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Prompt Hub"
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
+  "permissions": ["storage", "unlimitedStorage"],
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
