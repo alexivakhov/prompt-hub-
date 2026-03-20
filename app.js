@@ -39,7 +39,7 @@ const DEFAULT_PROMPTS = [
   {
     id: generateId(),
     title: 'Explain Like I\'m 5',
-    body: 'Explain the following concept in simple terms, as if you were explaining it to a 5-year-old child. Use analogies and examples that are easy to understand.\n\nConcept: [YOUR TOPIC]',
+    body: 'Explain the following concept in simple terms, as if you were explaining it to a 5-year-old child. Use analogies and examples that are easy to understand.\n\nConcept: {YOUR TOPIC}',
     category: 'General',
     favorite: false,
     trashed: false,
@@ -49,7 +49,7 @@ const DEFAULT_PROMPTS = [
   {
     id: generateId(),
     title: 'Code Review Assistant',
-    body: 'Review the following code for potential bugs, performance issues, and best practice violations. Provide specific suggestions for improvement with code examples.\n\n```\n[PASTE YOUR CODE]\n```',
+    body: 'Review the following code for potential bugs, performance issues, and best practice violations. Provide specific suggestions for improvement with code examples.\n\n```\n{PASTE YOUR CODE}\n```',
     category: 'General',
     favorite: true,
     trashed: false,
