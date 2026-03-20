@@ -326,10 +326,12 @@ function toggleFavorite() {
 
 /* ── TEMPLATE VARIABLES ── */
 function extractVariables(text) {
-  const regex = /\{\{(.+?)\}\}/g;
+  // Support both {{var}} and {var}
+  const regex = /\{\{?(.+?)\}?\}/g;
   const matches = []; let match;
   while ((match = regex.exec(text)) !== null) {
-    if (!matches.includes(match[1])) matches.push(match[1]);
+    const varName = match[1].trim();
+    if (!matches.includes(varName)) matches.push(varName);
   }
   return matches;
 }
@@ -346,7 +348,8 @@ function openVariableModal(text) {
     $varInputs.appendChild(div);
   });
   $varModal.classList.remove('hidden');
-  $varInputs.querySelector('input').focus();
+  const firstInput = $varInputs.querySelector('.var-field');
+  if (firstInput) firstInput.focus();
 }
 
 async function performCopy(text) {
@@ -367,8 +370,12 @@ $btnConfirmVar.onclick = () => {
   let result = currentTemplate;
   $varInputs.querySelectorAll('.var-field').forEach(input => {
     const name = input.getAttribute('data-var');
-    const val = input.value || `{{${name}}}`;
-    result = result.split(`{{${name}}}`).join(val);
+    const val = input.value || `{${name}}`; // Fallback to single brace if empty
+    
+    // Replace all occurrences of {{name}} and {name}
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`\\{\\{?${escapedName}\\}?\\}`, 'g');
+    result = result.replace(re, val);
   });
   performCopy(result);
   $varModal.classList.add('hidden');
