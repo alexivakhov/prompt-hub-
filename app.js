@@ -1,5 +1,5 @@
 /* ============================================================
-   NEUMORPHIC PROMPT HUB — app.js (v1.2.0)
+   NEUMORPHIC PROMPT HUB — app.js (v1.2.2)
    Added Template Variables support via Modal.
    ============================================================ */
 
@@ -69,39 +69,63 @@ async function loadData() {
     });
   }
 
-  const syncResult = await getFrom(chrome.storage.sync);
-  if (syncResult.prompts && syncResult.categories) {
-    state.prompts = syncResult.prompts;
+  const syncResult  = await getFrom(chrome.storage.sync);
+  const localResult = await getFrom(chrome.storage.local);
+
+  const hasSync  = syncResult.prompts  && syncResult.categories;
+  const hasLocal = localResult.prompts && localResult.categories;
+
+  if (hasSync && hasLocal) {
+    // Both exist — pick whichever has more prompts (i.e. fresher data).
+    // This prevents sync (which may be stale due to quota limits)
+    // from overwriting newer local data.
+    const syncMax  = Math.max(0, ...syncResult.prompts.map(p => p.updatedAt || 0));
+    const localMax = Math.max(0, ...localResult.prompts.map(p => p.updatedAt || 0));
+
+    if (localMax >= syncMax) {
+      state.prompts    = localResult.prompts;
+      state.categories = localResult.categories;
+    } else {
+      state.prompts    = syncResult.prompts;
+      state.categories = syncResult.categories;
+    }
+    return;
+  }
+
+  if (hasLocal) {
+    state.prompts    = localResult.prompts;
+    state.categories = localResult.categories;
+    return;
+  }
+
+  if (hasSync) {
+    state.prompts    = syncResult.prompts;
     state.categories = syncResult.categories;
     chrome.storage.local.set({ prompts: state.prompts, categories: state.categories });
     return;
   }
 
-  const localResult = await getFrom(chrome.storage.local);
-  if (localResult.prompts && localResult.categories) {
-    state.prompts = localResult.prompts;
-    state.categories = localResult.categories;
-    saveTo(chrome.storage.sync);
-    return;
-  }
-
+  // First-time run — seed defaults
   state.prompts = DEFAULT_PROMPTS;
   state.categories = DEFAULT_CATEGORIES;
   saveData();
 }
 
-function saveTo(area) {
-  try {
-    area.set({ prompts: state.prompts, categories: state.categories });
-  } catch (_) {}
-}
-
 function saveData() {
   const payload = { prompts: state.prompts, categories: state.categories };
+
+  // Local is always the primary store (no size limits with unlimitedStorage)
   chrome.storage.local.set(payload);
+
+  // Sync is best-effort only: 8 KB per key, 100 KB total.
+  // If data exceeds the quota, sync silently stays stale —
+  // loadData() will pick local as the fresher source next time.
   try {
-    chrome.storage.sync.set(payload);
-  } catch (_) {}
+    const bytes = new Blob([JSON.stringify(payload)]).size;
+    if (bytes < 8192) {
+      chrome.storage.sync.set(payload);
+    }
+  } catch (_) { /* sync unavailable */ }
 }
 
 
