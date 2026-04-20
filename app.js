@@ -1,192 +1,255 @@
 /* ============================================================
-   NEUMORPHIC PROMPT HUB — app.js (v1.2.2)
-   Added Template Variables support via Modal.
+   PROMPT HUB — app.js (v2.0 · Hybrid Modern)
+   Keeps the existing data model; rewires to the new UI.
    ============================================================ */
 
 'use strict';
 
-/* ── Utility: Generate a unique ID ── */
+/* ── Utils ── */
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
+function formatRelative(ts) {
+  const diff = Date.now() - ts;
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return min + 'm ago';
+  const h = Math.floor(min / 60);
+  if (h < 24) return h + 'h ago';
+  const d = Math.floor(h / 24);
+  if (d < 7) return d + 'd ago';
+  const date = new Date(ts);
+  return date.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+}
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
 
-/* ── Utility: Format date for display ── */
-function formatDate(timestamp) {
-  const d = new Date(timestamp);
-  const day = d.getDate().toString().padStart(2, '0');
-  const mon = (d.getMonth() + 1).toString().padStart(2, '0');
-  return `${day}.${mon}.${d.getFullYear()}`;
+/* Palette used for category colors (stable hash) */
+const CAT_COLORS = [
+  '#0A84FF', '#10B981', '#F59E0B', '#A855F7', '#EC4899',
+  '#14B8A6', '#F97316', '#6366F1', '#EAB308', '#06B6D4',
+];
+function colorFor(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return CAT_COLORS[h % CAT_COLORS.length];
 }
 
 /* ============================================================
    STATE
    ============================================================ */
 let state = {
-  prompts: [],          // Array of prompt objects
-  categories: [],       // Array of category strings
-  currentView: 'all',   // 'all' | 'favorites' | 'categories' | 'trash'
-  selectedId: null,      // Currently selected prompt ID
-  selectedCategory: null, // For category sub-filter
-  searchQuery: ''        // Current search text
+  prompts: [],
+  categories: [],
+  currentView: 'all',
+  selectedId: null,
+  selectedCategory: null,
+  searchQuery: '',
+  theme: 'light',
 };
 
-let currentTemplate = ''; // Template for variables processing
+let currentTemplate = '';
 
-/* ── Default data for first-time run ── */
-const DEFAULT_CATEGORIES = ['General'];
-
+const DEFAULT_CATEGORIES = ['Dev', 'Writing', 'Learning'];
 const DEFAULT_PROMPTS = [
   {
     id: generateId(),
     title: 'Explain Like I\'m 5',
-    body: 'Explain the following concept in simple terms, as if you were explaining it to a 5-year-old child. Use analogies and examples that are easy to understand.\n\nConcept: {YOUR TOPIC}',
-    category: 'General',
-    favorite: false,
-    trashed: false,
-    createdAt: Date.now(),
-    updatedAt: Date.now()
+    body: 'Explain the following concept in simple terms, as if you were explaining it to a 5-year-old child. Use analogies and examples that are easy to understand.\n\nConcept: {{topic}}',
+    category: 'Learning',
+    favorite: false, trashed: false,
+    createdAt: Date.now() - 3600000,
+    updatedAt: Date.now() - 3600000,
   },
   {
     id: generateId(),
     title: 'Code Review Assistant',
-    body: 'Review the following code for potential bugs, performance issues, and best practice violations. Provide specific suggestions for improvement with code examples.\n\n```\n{PASTE YOUR CODE}\n```',
-    category: 'General',
-    favorite: true,
-    trashed: false,
-    createdAt: Date.now() - 1000,
-    updatedAt: Date.now() - 1000
-  }
+    body: 'Review the following code for potential bugs, performance issues, and best practice violations. Provide specific suggestions for improvement with code examples.\n\nLanguage: {{language}}\n\nCode:\n```\n{{paste_code}}\n```\n\nFocus on: {{priorities}}',
+    category: 'Dev',
+    favorite: true, trashed: false,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  },
 ];
 
 /* ============================================================
-   STORAGE — chrome.storage.sync (primary) + local (fallback)
+   STORAGE — chrome.storage (with localStorage fallback for dev)
    ============================================================ */
+const hasChrome = typeof chrome !== 'undefined' && chrome.storage;
+
+function getFromArea(area) {
+  return new Promise((resolve) => {
+    area.get(['prompts', 'categories', 'theme'], resolve);
+  });
+}
 
 async function loadData() {
-  function getFrom(area) {
-    return new Promise((resolve) => {
-      area.get(['prompts', 'categories'], (result) => resolve(result));
-    });
+  if (!hasChrome) {
+    try {
+      const data = JSON.parse(localStorage.getItem('promptHub') || 'null');
+      if (data && data.prompts && data.categories) {
+        state.prompts = data.prompts;
+        state.categories = data.categories;
+        state.theme = data.theme || 'light';
+        return;
+      }
+    } catch (_) {}
+    state.prompts = DEFAULT_PROMPTS;
+    state.categories = DEFAULT_CATEGORIES;
+    saveData();
+    return;
   }
 
-  const syncResult  = await getFrom(chrome.storage.sync);
-  const localResult = await getFrom(chrome.storage.local);
+  const sync  = await getFromArea(chrome.storage.sync);
+  const local = await getFromArea(chrome.storage.local);
 
-  const hasSync  = syncResult.prompts  && syncResult.categories;
-  const hasLocal = localResult.prompts && localResult.categories;
+  const hasSync  = sync.prompts  && sync.categories;
+  const hasLocal = local.prompts && local.categories;
 
   if (hasSync && hasLocal) {
-    // Both exist — pick whichever has more prompts (i.e. fresher data).
-    // This prevents sync (which may be stale due to quota limits)
-    // from overwriting newer local data.
-    const syncMax  = Math.max(0, ...syncResult.prompts.map(p => p.updatedAt || 0));
-    const localMax = Math.max(0, ...localResult.prompts.map(p => p.updatedAt || 0));
-
-    if (localMax >= syncMax) {
-      state.prompts    = localResult.prompts;
-      state.categories = localResult.categories;
-    } else {
-      state.prompts    = syncResult.prompts;
-      state.categories = syncResult.categories;
-    }
+    const sMax = Math.max(0, ...sync.prompts.map(p => p.updatedAt || 0));
+    const lMax = Math.max(0, ...local.prompts.map(p => p.updatedAt || 0));
+    const src = lMax >= sMax ? local : sync;
+    state.prompts = src.prompts;
+    state.categories = src.categories;
+    state.theme = local.theme || sync.theme || 'light';
     return;
   }
-
   if (hasLocal) {
-    state.prompts    = localResult.prompts;
-    state.categories = localResult.categories;
+    state.prompts = local.prompts;
+    state.categories = local.categories;
+    state.theme = local.theme || 'light';
     return;
   }
-
   if (hasSync) {
-    state.prompts    = syncResult.prompts;
-    state.categories = syncResult.categories;
-    chrome.storage.local.set({ prompts: state.prompts, categories: state.categories });
+    state.prompts = sync.prompts;
+    state.categories = sync.categories;
+    state.theme = sync.theme || 'light';
+    chrome.storage.local.set({ prompts: state.prompts, categories: state.categories, theme: state.theme });
     return;
   }
-
-  // First-time run — seed defaults
   state.prompts = DEFAULT_PROMPTS;
   state.categories = DEFAULT_CATEGORIES;
   saveData();
 }
 
 function saveData() {
-  const payload = { prompts: state.prompts, categories: state.categories };
-
-  // Local is always the primary store (no size limits with unlimitedStorage)
+  const payload = { prompts: state.prompts, categories: state.categories, theme: state.theme };
+  if (!hasChrome) {
+    try { localStorage.setItem('promptHub', JSON.stringify(payload)); } catch (_) {}
+    return;
+  }
   chrome.storage.local.set(payload);
-
-  // Sync is best-effort only: 8 KB per key, 100 KB total.
-  // If data exceeds the quota, sync silently stays stale —
-  // loadData() will pick local as the fresher source next time.
   try {
     const bytes = new Blob([JSON.stringify(payload)]).size;
-    if (bytes < 8192) {
-      chrome.storage.sync.set(payload);
-    }
-  } catch (_) { /* sync unavailable */ }
+    if (bytes < 8192) chrome.storage.sync.set(payload);
+  } catch (_) {}
 }
 
+/* ============================================================
+   DOM REFS
+   ============================================================ */
+const $ = (id) => document.getElementById(id);
+
+const refs = {
+  navs: document.querySelectorAll('.icon-nav .icon-btn[data-view]'),
+  listTitle: $('listTitle'),
+  listCount: $('listCount'),
+  searchInput: $('searchInput'),
+  categoryList: $('categoryList'),
+  promptList: $('promptList'),
+
+  emptyState: $('emptyState'),
+  editorForm: $('editorForm'),
+  catPill: $('catPill'),
+  catDot: $('catDot'),
+  catLabel: $('catLabel'),
+  metaInfo: $('metaInfo'),
+  btnFavorite: $('btnFavorite'),
+  btnChangeCat: $('btnChangeCat'),
+  promptTitle: $('promptTitle'),
+  promptBody: $('promptBody'),
+  bodyMeta: $('bodyMeta'),
+
+  btnListNew: $('btnListNew'),
+  btnCopy: $('btnCopy'),
+  copyLabel: $('copyLabel'),
+  btnSave: $('btnSave'),
+  btnDelete: $('btnDelete'),
+  trashActions: $('trashActions'),
+  btnRestore: $('btnRestore'),
+  btnPermanentDelete: $('btnPermanentDelete'),
+
+  btnImport: $('btnImport'),
+  btnExport: $('btnExport'),
+  btnTheme: $('btnTheme'),
+  importFile: $('importFile'),
+
+  catMenu: $('catMenu'),
+  catModal: $('categoryModal'),
+  newCategoryInput: $('newCategoryInput'),
+  btnCancelCategory: $('btnCancelCategory'),
+  btnConfirmCategory: $('btnConfirmCategory'),
+
+  varModal: $('variableModal'),
+  varInputs: $('varInputs'),
+  btnCancelVar: $('btnCancelVar'),
+  btnConfirmVar: $('btnConfirmVar'),
+
+  toast: $('toast'),
+};
 
 /* ============================================================
-   DOM REFERENCES
+   THEME
    ============================================================ */
-const $navBtns          = document.querySelectorAll('.nav-btn');
-const $btnNewPrompt     = document.getElementById('btnNewPrompt');
-const $searchInput      = document.getElementById('searchInput');
-const $listTitle        = document.getElementById('listTitle');
-const $listCount        = document.getElementById('listCount');
-const $categoryList     = document.getElementById('categoryList');
-const $promptList       = document.getElementById('promptList');
-const $emptyState       = document.getElementById('emptyState');
-const $editorForm       = document.getElementById('editorForm');
-const $promptTitle      = document.getElementById('promptTitle');
-const $promptCategory   = document.getElementById('promptCategory');
-const $promptBody       = document.getElementById('promptBody');
-const $btnFavorite      = document.getElementById('btnFavorite');
-const $btnCopy          = document.getElementById('btnCopy');
-const $copyLabel        = document.getElementById('copyLabel');
-const $btnSave          = document.getElementById('btnSave');
-const $btnDelete        = document.getElementById('btnDelete');
-const $trashActions     = document.getElementById('trashActions');
-const $btnRestore       = document.getElementById('btnRestore');
-const $btnPermanentDelete = document.getElementById('btnPermanentDelete');
-const $btnAddCategory   = document.getElementById('btnAddCategory');
-const $categoryModal    = document.getElementById('categoryModal');
-const $newCategoryInput = document.getElementById('newCategoryInput');
-const $btnCancelCategory = document.getElementById('btnCancelCategory');
-const $btnConfirmCategory = document.getElementById('btnConfirmCategory');
-
-const $btnExport    = document.getElementById('btnExport');
-const $btnImport    = document.getElementById('btnImport');
-const $importFile   = document.getElementById('importFile');
-
-// Variables Modal
-const $varModal = document.getElementById('variableModal');
-const $varInputs = document.getElementById('varInputs');
-const $btnCancelVar = document.getElementById('btnCancelVar');
-const $btnConfirmVar = document.getElementById('btnConfirmVar');
-
+function applyTheme(t) {
+  document.documentElement.classList.remove('theme-light', 'theme-dark');
+  document.documentElement.classList.add('theme-' + t);
+  state.theme = t;
+}
+function toggleTheme() {
+  applyTheme(state.theme === 'dark' ? 'light' : 'dark');
+  saveData();
+}
 
 /* ============================================================
-   RENDERING
+   TOAST
    ============================================================ */
+let toastTimer;
+function showToast(msg) {
+  refs.toast.textContent = msg;
+  refs.toast.classList.remove('hidden');
+  requestAnimationFrame(() => refs.toast.classList.add('show'));
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    refs.toast.classList.remove('show');
+    setTimeout(() => refs.toast.classList.add('hidden'), 250);
+  }, 1600);
+}
 
+/* ============================================================
+   RENDER
+   ============================================================ */
 function getFilteredPrompts() {
   let list = state.prompts;
   switch (state.currentView) {
-    case 'all': list = list.filter(p => !p.trashed); break;
+    case 'all':       list = list.filter(p => !p.trashed); break;
     case 'favorites': list = list.filter(p => !p.trashed && p.favorite); break;
     case 'categories':
       list = list.filter(p => !p.trashed);
       if (state.selectedCategory) list = list.filter(p => p.category === state.selectedCategory);
       break;
-    case 'trash': list = list.filter(p => p.trashed); break;
+    case 'trash':     list = list.filter(p => p.trashed); break;
   }
   if (state.searchQuery.trim()) {
     const q = state.searchQuery.toLowerCase();
-    list = list.filter(p => p.title.toLowerCase().includes(q) || p.body.toLowerCase().includes(q));
+    list = list.filter(p =>
+      (p.title || '').toLowerCase().includes(q) ||
+      (p.body  || '').toLowerCase().includes(q)
+    );
   }
   list.sort((a, b) => b.updatedAt - a.updatedAt);
   return list;
@@ -194,248 +257,429 @@ function getFilteredPrompts() {
 
 function renderList() {
   const filtered = getFilteredPrompts();
-  const viewLabels = { all: 'All Prompts', favorites: 'Favorites', categories: state.selectedCategory || 'Categories', trash: 'Trash' };
-  $listTitle.textContent = viewLabels[state.currentView];
-  $listCount.textContent = filtered.length;
+  const titles = {
+    all: 'All prompts',
+    favorites: 'Favorites',
+    categories: state.selectedCategory || 'Categories',
+    trash: 'Trash',
+  };
+  refs.listTitle.textContent = titles[state.currentView];
+  refs.listCount.textContent = filtered.length;
 
+  // Category sub-list
   if (state.currentView === 'categories') {
-    $categoryList.classList.remove('hidden');
+    refs.categoryList.classList.remove('hidden');
     renderCategorySubList();
   } else {
-    $categoryList.classList.add('hidden');
+    refs.categoryList.classList.add('hidden');
   }
 
-  $promptList.innerHTML = '';
+  refs.promptList.innerHTML = '';
   if (filtered.length === 0) {
     const empty = document.createElement('li');
     empty.className = 'list-empty';
     empty.textContent = state.currentView === 'trash' ? 'Trash is empty' : 'No prompts found';
-    $promptList.appendChild(empty);
+    refs.promptList.appendChild(empty);
     return;
   }
 
-  filtered.forEach(prompt => {
+  filtered.forEach(p => {
     const li = document.createElement('li');
-    li.className = 'prompt-item fade-in';
-    if (prompt.id === state.selectedId) li.classList.add('selected');
+    li.className = 'prompt-item';
+    if (p.id === state.selectedId) li.classList.add('selected');
     li.innerHTML = `
-      <div class="item-title">${escapeHtml(prompt.title || 'Untitled')}</div>
-      <div class="item-meta">
-        ${prompt.favorite ? '<span class="fav-indicator">★</span>' : ''}
-        <span>${prompt.category}</span>
-        <span>· ${formatDate(prompt.updatedAt)}</span>
+      <div class="item-top">
+        <span class="dot" style="background:${colorFor(p.category)}"></span>
+        <span class="item-cat">${escapeHtml(p.category || 'Misc')}</span>
+        ${p.favorite ? `
+          <span class="item-fav">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21.02 7 14.14 2 9.27l6.91-1.01L12 2z"/>
+            </svg>
+          </span>` : ''}
+        <span class="item-date">${formatRelative(p.updatedAt)}</span>
       </div>
+      <div class="item-title">${escapeHtml(p.title || 'Untitled')}</div>
     `;
-    li.addEventListener('click', () => selectPrompt(prompt.id));
-    $promptList.appendChild(li);
+    li.addEventListener('click', () => selectPrompt(p.id));
+    refs.promptList.appendChild(li);
   });
 }
 
 function renderCategorySubList() {
-  $categoryList.innerHTML = '';
-  const allBtn = document.createElement('button');
-  allBtn.className = 'cat-item' + (!state.selectedCategory ? ' active' : '');
-  allBtn.innerHTML = `<span>All</span><span class="cat-count">${state.prompts.filter(p => !p.trashed).length}</span>`;
-  allBtn.addEventListener('click', () => { state.selectedCategory = null; renderList(); });
-  $categoryList.appendChild(allBtn);
+  refs.categoryList.innerHTML = '';
+  const activePrompts = state.prompts.filter(p => !p.trashed);
+
+  const all = document.createElement('button');
+  all.className = 'cat-item' + (!state.selectedCategory ? ' active' : '');
+  all.innerHTML = `<span class="dot" style="background:var(--text-faint)"></span><span class="label">All</span><span class="count">${activePrompts.length}</span>`;
+  all.addEventListener('click', () => { state.selectedCategory = null; renderList(); });
+  refs.categoryList.appendChild(all);
 
   state.categories.forEach(cat => {
-    const btn = document.createElement('button');
-    btn.className = 'cat-item' + (state.selectedCategory === cat ? ' active' : '');
-    btn.innerHTML = `<span>${escapeHtml(cat)}</span><span class="cat-count">${state.prompts.filter(p => !p.trashed && p.category === cat).length}</span>`;
-    btn.addEventListener('click', () => { state.selectedCategory = cat; renderList(); });
-    $categoryList.appendChild(btn);
-  });
-}
-
-function renderCategorySelect(selectedCat) {
-  $promptCategory.innerHTML = '';
-  state.categories.forEach(cat => {
-    const opt = document.createElement('option');
-    opt.value = cat; opt.textContent = cat;
-    if (cat === selectedCat) opt.selected = true;
-    $promptCategory.appendChild(opt);
+    const wrap = document.createElement('div');
+    wrap.className = 'cat-item-wrap' + (state.selectedCategory === cat ? ' active' : '');
+    const count = activePrompts.filter(p => p.category === cat).length;
+    wrap.innerHTML = `
+      <button class="cat-item-main">
+        <span class="dot" style="background:${colorFor(cat)}"></span>
+        <span class="label">${escapeHtml(cat)}</span>
+        <span class="count">${count}</span>
+      </button>
+      <button class="cat-item-del" title="Delete category" aria-label="Delete ${escapeHtml(cat)}">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"/>
+          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+        </svg>
+      </button>
+    `;
+    wrap.querySelector('.cat-item-main').addEventListener('click', () => { state.selectedCategory = cat; renderList(); });
+    wrap.querySelector('.cat-item-del').addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteCategory(cat);
+    });
+    refs.categoryList.appendChild(wrap);
   });
 }
 
 function showEditor(prompt) {
-  $emptyState.classList.add('hidden');
-  $editorForm.classList.remove('hidden');
-  $promptTitle.value = prompt.title;
-  $promptBody.value = prompt.body;
-  renderCategorySelect(prompt.category);
-  $btnFavorite.classList.toggle('active', prompt.favorite);
-  const isTrashed = prompt.trashed;
-  $btnCopy.parentElement.style.display = isTrashed ? 'none' : '';
-  $trashActions.classList.toggle('hidden', !isTrashed);
-  $btnSave.style.display = isTrashed ? 'none' : '';
-  $btnDelete.style.display = isTrashed ? 'none' : '';
+  refs.emptyState.classList.add('hidden');
+  refs.editorForm.classList.remove('hidden');
+
+  refs.promptTitle.value = prompt.title || '';
+  refs.promptBody.value = prompt.body || '';
+  refs.catDot.style.background = colorFor(prompt.category);
+  refs.catLabel.textContent = prompt.category || 'Misc';
+  refs.catPill.style.color = colorFor(prompt.category);
+  refs.catPill.style.background = colorFor(prompt.category) + '1A'; // ~10% alpha
+  refs.metaInfo.textContent = '· Updated ' + formatRelative(prompt.updatedAt);
+  refs.btnFavorite.classList.toggle('fav-active', !!prompt.favorite);
+
+  updateBodyMeta();
+
+  const trashed = !!prompt.trashed;
+  // Toggle normal vs trash action rows
+  document.querySelector('.actions:not(#trashActions)').classList.toggle('hidden', trashed);
+  refs.trashActions.classList.toggle('hidden', !trashed);
 }
 
 function hideEditor() {
-  $emptyState.classList.remove('hidden');
-  $editorForm.classList.add('hidden');
+  refs.emptyState.classList.remove('hidden');
+  refs.editorForm.classList.add('hidden');
   state.selectedId = null;
 }
 
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+function updateBodyMeta() {
+  const t = refs.promptBody.value;
+  refs.bodyMeta.textContent = t.length + ' chars';
 }
 
 /* ============================================================
    ACTIONS
    ============================================================ */
-
 function selectPrompt(id) {
   state.selectedId = id;
-  const prompt = state.prompts.find(p => p.id === id);
-  if (prompt) showEditor(prompt);
+  const p = state.prompts.find(p => p.id === id);
+  if (p) showEditor(p);
   renderList();
 }
 
 function createNewPrompt() {
-  const newPrompt = { id: generateId(), title: '', body: '', category: state.categories[0] || 'General', favorite: false, trashed: false, createdAt: Date.now(), updatedAt: Date.now() };
-  state.prompts.push(newPrompt);
-  state.selectedId = newPrompt.id;
+  const p = {
+    id: generateId(),
+    title: '', body: '',
+    category: state.categories[0] || 'Misc',
+    favorite: false, trashed: false,
+    createdAt: Date.now(), updatedAt: Date.now(),
+  };
+  state.prompts.push(p);
+  state.selectedId = p.id;
   if (state.currentView === 'trash') switchView('all');
-  saveData(); renderList(); showEditor(newPrompt);
-  $promptTitle.focus();
+  saveData();
+  renderList();
+  showEditor(p);
+  refs.promptTitle.focus();
 }
 
-function saveCurrentPrompt() {
+function saveCurrentPrompt(silent) {
   if (!state.selectedId) return;
-  const prompt = state.prompts.find(p => p.id === state.selectedId);
-  if (!prompt) return;
-  prompt.title = $promptTitle.value.trim() || 'Untitled';
-  prompt.body = $promptBody.value;
-  prompt.category = $promptCategory.value;
-  prompt.updatedAt = Date.now();
-  saveData(); renderList();
-  $btnSave.classList.add('success-flash');
-  setTimeout(() => $btnSave.classList.remove('success-flash'), 800);
+  const p = state.prompts.find(p => p.id === state.selectedId);
+  if (!p) return;
+  p.title = refs.promptTitle.value.trim() || 'Untitled';
+  p.body = refs.promptBody.value;
+  p.updatedAt = Date.now();
+  saveData();
+  renderList();
+  if (!silent) {
+    refs.btnSave.classList.add('save-flash');
+    setTimeout(() => refs.btnSave.classList.remove('save-flash'), 700);
+    showToast('Saved');
+  }
+  refs.metaInfo.textContent = '· Updated ' + formatRelative(p.updatedAt);
 }
 
-function trashCurrentPrompt() {
+function trashCurrent() {
   if (!state.selectedId) return;
-  const prompt = state.prompts.find(p => p.id === state.selectedId);
-  if (!prompt) return;
-  prompt.trashed = true; prompt.updatedAt = Date.now();
+  const p = state.prompts.find(p => p.id === state.selectedId);
+  if (!p) return;
+  p.trashed = true; p.updatedAt = Date.now();
   hideEditor(); saveData(); renderList();
+  showToast('Moved to trash');
 }
 
-function restoreCurrentPrompt() {
+function restoreCurrent() {
   if (!state.selectedId) return;
-  const prompt = state.prompts.find(p => p.id === state.selectedId);
-  if (!prompt) return;
-  prompt.trashed = false; prompt.updatedAt = Date.now();
+  const p = state.prompts.find(p => p.id === state.selectedId);
+  if (!p) return;
+  p.trashed = false; p.updatedAt = Date.now();
   hideEditor(); saveData(); renderList();
+  showToast('Restored');
 }
 
-function permanentlyDeletePrompt() {
+function permanentlyDelete() {
   if (!state.selectedId) return;
   state.prompts = state.prompts.filter(p => p.id !== state.selectedId);
   hideEditor(); saveData(); renderList();
+  showToast('Deleted forever');
 }
 
 function toggleFavorite() {
   if (!state.selectedId) return;
-  const prompt = state.prompts.find(p => p.id === state.selectedId);
-  if (!prompt) return;
-  prompt.favorite = !prompt.favorite;
-  $btnFavorite.classList.toggle('active', prompt.favorite);
+  const p = state.prompts.find(p => p.id === state.selectedId);
+  if (!p) return;
+  p.favorite = !p.favorite;
+  p.updatedAt = Date.now();
+  refs.btnFavorite.classList.toggle('fav-active', p.favorite);
   saveData(); renderList();
 }
 
-/* ── TEMPLATE VARIABLES ── */
+/* Delete a category. Prompts in it become 'Misc'. */
+function deleteCategory(cat) {
+  const count = state.prompts.filter(p => p.category === cat && !p.trashed).length;
+  const msg = count > 0
+    ? `Delete category "${cat}"?\n\n${count} prompt${count > 1 ? 's' : ''} will be moved to "Misc".`
+    : `Delete category "${cat}"?`;
+  if (!confirm(msg)) return;
+
+  state.categories = state.categories.filter(c => c !== cat);
+  if (!state.categories.includes('Misc')) state.categories.push('Misc');
+
+  state.prompts.forEach(p => {
+    if (p.category === cat) p.category = 'Misc';
+  });
+
+  if (state.selectedCategory === cat) state.selectedCategory = null;
+
+  saveData();
+  renderList();
+  closeCategoryMenu();
+
+  if (state.selectedId) {
+    const sel = state.prompts.find(p => p.id === state.selectedId);
+    if (sel) showEditor(sel);
+  }
+
+  showToast('Category deleted');
+}
+
+/* ── Category menu (dropdown over toolbar) ── */
+function openCategoryMenu() {
+  const rect = refs.btnChangeCat.getBoundingClientRect();
+  refs.catMenu.style.top = (rect.bottom + 6) + 'px';
+  refs.catMenu.style.right = (window.innerWidth - rect.right) + 'px';
+  refs.catMenu.style.left = 'auto';
+
+  const p = state.prompts.find(p => p.id === state.selectedId);
+  const current = p ? p.category : null;
+
+  refs.catMenu.innerHTML = '';
+  state.categories.forEach(cat => {
+    const row = document.createElement('div');
+    row.className = 'cat-menu-row';
+    row.innerHTML = `
+      <button class="cat-menu-item cat-menu-pick">
+        <span class="dot" style="background:${colorFor(cat)}"></span>
+        <span class="cat-name">${escapeHtml(cat)}</span>
+        ${cat === current ? '<span class="cat-check">✓</span>' : ''}
+      </button>
+      <button class="cat-menu-del" title="Delete category" aria-label="Delete ${escapeHtml(cat)}">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"/>
+          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+        </svg>
+      </button>
+    `;
+    row.querySelector('.cat-menu-pick').addEventListener('click', () => {
+      if (!state.selectedId) return;
+      const pr = state.prompts.find(p => p.id === state.selectedId);
+      if (!pr) return;
+      pr.category = cat;
+      pr.updatedAt = Date.now();
+      saveData(); renderList();
+      showEditor(pr);
+      closeCategoryMenu();
+    });
+    row.querySelector('.cat-menu-del').addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteCategory(cat);
+    });
+    refs.catMenu.appendChild(row);
+  });
+
+  const divider = document.createElement('div');
+  divider.className = 'cat-menu-divider';
+  refs.catMenu.appendChild(divider);
+
+  const add = document.createElement('button');
+  add.className = 'cat-menu-item cat-menu-add';
+  add.innerHTML = `<span style="width:8px;height:8px;display:inline-block;font-size:11px;">+</span> New category`;
+  add.addEventListener('click', () => {
+    closeCategoryMenu();
+    openCategoryModal();
+  });
+  refs.catMenu.appendChild(add);
+
+  refs.catMenu.classList.remove('hidden');
+}
+
+function closeCategoryMenu() {
+  refs.catMenu.classList.add('hidden');
+}
+
+/* ── Variables modal ── */
 function extractVariables(text) {
-  // Support both {{var}} and {var}
-  const regex = /\{\{?(.+?)\}?\}/g;
-  const matches = []; let match;
-  while ((match = regex.exec(text)) !== null) {
-    const varName = match[1].trim();
-    if (!matches.includes(varName)) matches.push(varName);
+  const regex = /\{\{([^{}]+?)\}\}/g;
+  const matches = []; let m;
+  while ((m = regex.exec(text)) !== null) {
+    const name = m[1].trim();
+    if (!matches.includes(name) && name.length < 80) matches.push(name);
   }
   return matches;
 }
 
-function openVariableModal(text) {
-  const vars = extractVariables(text);
-  if (vars.length === 0) { performCopy(text); return; }
-  currentTemplate = text;
-  $varInputs.innerHTML = '';
-  vars.forEach(v => {
-    const div = document.createElement('div');
-    div.className = 'modal-row';
-    div.innerHTML = `<label>${v}</label><textarea class="modal-input var-field" data-var="${v}" placeholder="Enter value for ${v}..."></textarea>`;
-    $varInputs.appendChild(div);
-  });
-  $varModal.classList.remove('hidden');
-  const firstInput = $varInputs.querySelector('.var-field');
-  if (firstInput) firstInput.focus();
-}
-
-async function performCopy(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-    $copyLabel.textContent = 'Copied!';
-    $btnCopy.classList.add('copied');
-    setTimeout(() => { $copyLabel.textContent = 'Copy'; $btnCopy.classList.remove('copied'); }, 1000);
-  } catch (err) {
-    // Fallback
-    const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t);
-    $copyLabel.textContent = 'Copied!'; $btnCopy.classList.add('copied');
-    setTimeout(() => { $copyLabel.textContent = 'Copy'; $btnCopy.classList.remove('copied'); }, 1000);
+async function copyToClipboard(text) {
+  try { await navigator.clipboard.writeText(text); }
+  catch (_) {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta);
   }
 }
 
-$btnConfirmVar.onclick = () => {
+function handleCopy() {
+  if (!state.selectedId) return;
+  const p = state.prompts.find(p => p.id === state.selectedId);
+  if (!p) return;
+  const vars = extractVariables(p.body || '');
+  if (vars.length === 0) {
+    performCopy(p.body || '');
+    return;
+  }
+  openVariableModal(p.body, vars);
+}
+
+function openVariableModal(text, vars) {
+  currentTemplate = text;
+  refs.varInputs.innerHTML = '';
+  vars.forEach(v => {
+    const row = document.createElement('div');
+    row.className = 'var-row';
+
+    const label = document.createElement('label');
+    const mono = document.createElement('span');
+    mono.className = 'mono';
+    mono.textContent = `{{${v}}}`;
+    label.appendChild(mono);
+
+    const ta = document.createElement('textarea');
+    ta.className = 'var-field';
+    ta.setAttribute('data-var', v);
+    ta.placeholder = `Enter value for ${v}…`;
+
+    row.appendChild(label);
+    row.appendChild(ta);
+    refs.varInputs.appendChild(row);
+  });
+  refs.varModal.classList.remove('hidden');
+  setTimeout(() => {
+    const first = refs.varInputs.querySelector('textarea');
+    if (first) first.focus();
+  }, 50);
+}
+
+refs.btnConfirmVar.addEventListener('click', () => {
   let result = currentTemplate;
-  $varInputs.querySelectorAll('.var-field').forEach(input => {
-    const name = input.getAttribute('data-var');
-    const val = input.value || `{${name}}`; // Fallback to single brace if empty
-    
-    // Replace all occurrences of {{name}} and {name}
-    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(`\\{\\{?${escapedName}\\}?\\}`, 'g');
+  refs.varInputs.querySelectorAll('.var-field').forEach(inp => {
+    const name = inp.getAttribute('data-var');
+    const val  = inp.value || `{{${name}}}`;
+    const esc  = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re   = new RegExp(`\\{\\{${esc}\\}\\}`, 'g');
     result = result.replace(re, val);
   });
+  refs.varModal.classList.add('hidden');
   performCopy(result);
-  $varModal.classList.add('hidden');
-};
+});
+refs.btnCancelVar.addEventListener('click', () => refs.varModal.classList.add('hidden'));
 
-$btnCancelVar.onclick = () => $varModal.classList.add('hidden');
-
-async function handleCopy() {
-  if (!state.selectedId) return;
-  const prompt = state.prompts.find(p => p.id === state.selectedId);
-  if (!prompt) return;
-  openVariableModal(prompt.body);
+async function performCopy(text) {
+  await copyToClipboard(text);
+  refs.copyLabel.textContent = 'Copied!';
+  refs.btnCopy.classList.add('copied');
+  setTimeout(() => {
+    refs.copyLabel.textContent = 'Copy prompt';
+    refs.btnCopy.classList.remove('copied');
+  }, 1200);
 }
 
+/* ── Navigation ── */
 function switchView(view) {
-  state.currentView = view; state.selectedCategory = null;
-  $navBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.view === view));
-  hideEditor(); renderList();
+  state.currentView = view;
+  state.selectedCategory = null;
+  refs.navs.forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  hideEditor();
+  renderList();
 }
 
-function openCategoryModal() { $newCategoryInput.value = ''; $categoryModal.classList.remove('hidden'); $newCategoryInput.focus(); }
-function closeCategoryModal() { $categoryModal.classList.add('hidden'); }
-
+/* ── Category modal ── */
+function openCategoryModal() {
+  refs.newCategoryInput.value = '';
+  refs.catModal.classList.remove('hidden');
+  setTimeout(() => refs.newCategoryInput.focus(), 50);
+}
+function closeCategoryModal() { refs.catModal.classList.add('hidden'); }
 function confirmNewCategory() {
-  const name = $newCategoryInput.value.trim();
+  const name = refs.newCategoryInput.value.trim();
   if (!name) return;
-  if (state.categories.some(c => c.toLowerCase() === name.toLowerCase())) return;
-  state.categories.push(name); saveData();
-  if (state.selectedId) renderCategorySelect(name);
-  closeCategoryModal(); renderList();
+  if (state.categories.some(c => c.toLowerCase() === name.toLowerCase())) {
+    closeCategoryModal();
+    return;
+  }
+  state.categories.push(name);
+  // If editor has a prompt, assign new category
+  if (state.selectedId) {
+    const p = state.prompts.find(p => p.id === state.selectedId);
+    if (p) { p.category = name; p.updatedAt = Date.now(); showEditor(p); }
+  }
+  saveData();
+  renderList();
+  closeCategoryModal();
 }
 
+/* ── Import / Export ── */
 function exportData() {
-  const payload = { version: '1.2.0', exportedAt: new Date().toISOString(), categories: state.categories, prompts: state.prompts };
+  const payload = {
+    version: '2.0',
+    exportedAt: new Date().toISOString(),
+    categories: state.categories,
+    prompts: state.prompts,
+  };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `prompt-hub-backup-${Date.now()}.json`; a.click();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `prompt-hub-backup-${Date.now()}.json`;
+  a.click();
+  showToast('Exported');
 }
 
 function importData(file) {
@@ -444,33 +688,106 @@ function importData(file) {
   r.onload = (e) => {
     try {
       const d = JSON.parse(e.target.result);
-      if (!Array.isArray(d.prompts) || !Array.isArray(d.categories)) return;
-      if (!confirm('Replace all data with this backup?')) return;
-      state.prompts = d.prompts; state.categories = d.categories;
+      if (!Array.isArray(d.prompts) || !Array.isArray(d.categories)) {
+        showToast('Invalid file'); return;
+      }
+      if (!confirm('Replace all current data with this backup?')) return;
+      state.prompts = d.prompts;
+      state.categories = d.categories;
       saveData(); hideEditor(); renderList();
-    } catch (_) { alert('Invalid backup file'); }
+      showToast('Imported');
+    } catch (_) { showToast('Invalid file'); }
   };
   r.readAsText(file);
 }
 
-// Event Listeners
-$navBtns.forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.view)));
-$btnNewPrompt.addEventListener('click', createNewPrompt);
-$searchInput.addEventListener('input', (e) => { state.searchQuery = e.target.value; renderList(); });
-$btnFavorite.addEventListener('click', toggleFavorite);
-$btnCopy.addEventListener('click', handleCopy);
-$btnSave.addEventListener('click', saveCurrentPrompt);
-$btnDelete.addEventListener('click', trashCurrentPrompt);
-$btnRestore.addEventListener('click', restoreCurrentPrompt);
-$btnPermanentDelete.addEventListener('click', permanentlyDeletePrompt);
-$btnAddCategory.addEventListener('click', openCategoryModal);
-$btnCancelCategory.addEventListener('click', closeCategoryModal);
-$btnConfirmCategory.addEventListener('click', confirmNewCategory);
-$newCategoryInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') confirmNewCategory(); if (e.key === 'Escape') closeCategoryModal(); });
-$categoryModal.addEventListener('click', (e) => { if (e.target === $categoryModal) closeCategoryModal(); });
-$btnExport.addEventListener('click', exportData);
-$btnImport.addEventListener('click', () => $importFile.click());
-$importFile.addEventListener('change', (e) => { importData(e.target.files[0]); e.target.value = ''; });
-document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveCurrentPrompt(); } });
+/* ============================================================
+   EVENT WIRING
+   ============================================================ */
+refs.navs.forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.view)));
+refs.searchInput.addEventListener('input', (e) => {
+  state.searchQuery = e.target.value;
+  renderList();
+});
 
-(async function init() { await loadData(); renderList(); })();
+refs.btnListNew.addEventListener('click', createNewPrompt);
+refs.btnCopy.addEventListener('click', handleCopy);
+refs.btnSave.addEventListener('click', () => saveCurrentPrompt(false));
+refs.btnDelete.addEventListener('click', trashCurrent);
+refs.btnRestore.addEventListener('click', restoreCurrent);
+refs.btnPermanentDelete.addEventListener('click', permanentlyDelete);
+refs.btnFavorite.addEventListener('click', toggleFavorite);
+
+refs.btnChangeCat.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (refs.catMenu.classList.contains('hidden')) openCategoryMenu();
+  else closeCategoryMenu();
+});
+refs.catPill.addEventListener('click', (e) => {
+  e.stopPropagation();
+  refs.btnChangeCat.click();
+});
+document.addEventListener('click', (e) => {
+  if (!refs.catMenu.contains(e.target) && e.target !== refs.btnChangeCat) {
+    closeCategoryMenu();
+  }
+});
+
+refs.promptTitle.addEventListener('input', () => {
+  if (!state.selectedId) return;
+  const p = state.prompts.find(p => p.id === state.selectedId);
+  if (p) { p.title = refs.promptTitle.value.trim() || 'Untitled'; p.updatedAt = Date.now(); saveData(); renderList(); }
+});
+refs.promptBody.addEventListener('input', () => {
+  updateBodyMeta();
+  if (!state.selectedId) return;
+  const p = state.prompts.find(p => p.id === state.selectedId);
+  if (p) { p.body = refs.promptBody.value; p.updatedAt = Date.now(); saveData(); }
+});
+
+refs.btnImport.addEventListener('click', () => refs.importFile.click());
+refs.btnExport.addEventListener('click', exportData);
+refs.importFile.addEventListener('change', (e) => {
+  importData(e.target.files[0]);
+  e.target.value = '';
+});
+
+refs.btnTheme.addEventListener('click', toggleTheme);
+
+refs.btnCancelCategory.addEventListener('click', closeCategoryModal);
+refs.btnConfirmCategory.addEventListener('click', confirmNewCategory);
+refs.newCategoryInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') confirmNewCategory();
+  if (e.key === 'Escape') closeCategoryModal();
+});
+refs.catModal.addEventListener('click', (e) => {
+  if (e.target === refs.catModal) closeCategoryModal();
+});
+refs.varModal.addEventListener('click', (e) => {
+  if (e.target === refs.varModal) refs.varModal.classList.add('hidden');
+});
+
+/* Keyboard shortcuts */
+document.addEventListener('keydown', (e) => {
+  const cmd = e.ctrlKey || e.metaKey;
+  if (cmd && e.key === 's') { e.preventDefault(); saveCurrentPrompt(false); }
+  if (cmd && e.key === 'Enter') {
+    if (!refs.editorForm.classList.contains('hidden')) { e.preventDefault(); handleCopy(); }
+  }
+  if (cmd && e.key === 'n') { e.preventDefault(); createNewPrompt(); }
+  if (cmd && e.key === 'k') { e.preventDefault(); refs.searchInput.focus(); }
+  if (e.key === 'Escape') {
+    if (!refs.varModal.classList.contains('hidden')) refs.varModal.classList.add('hidden');
+    else if (!refs.catModal.classList.contains('hidden')) closeCategoryModal();
+    else closeCategoryMenu();
+  }
+});
+
+/* ============================================================
+   INIT
+   ============================================================ */
+(async function init() {
+  await loadData();
+  applyTheme(state.theme || 'light');
+  renderList();
+})();

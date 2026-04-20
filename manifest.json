@@ -1,17 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "Neumorphic Prompt Hub",
-  "version": "1.2.2",
-  "description": "A minimalist, neumorphic manager for your AI prompts.",
+  "name": "Prompt Hub",
+  "version": "1.3.0",
+  "description": "Save, organize and copy AI prompts with template variables.",
   "action": {
     "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    }
+    "default_title": "Prompt Hub"
   },
-  "permissions": ["storage", "unlimitedStorage"],
+  "permissions": ["storage"],
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
