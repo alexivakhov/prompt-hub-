@@ -18,4 +18,4 @@ Prompt Hub **does not collect, store, or transmit** any of your personal data to
 - `unlimitedStorage`: Used to ensure your library can grow without size restrictions.
 
 ## Contact
-If you have any questions, please contact the developer via the GitHub repository: https://github.com/alexivakhov/neumorphic-prompt-hub
+If you have any questions, please contact the developer via the GitHub repository: https://github.com/alexivakhov/prompt-hub
