@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "Prompt Hub",
+  "name": "Aineurit Prompt Hub",
   "version": "1.3.0",
   "description": "Save, organize and copy AI prompts with template variables.",
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Prompt Hub"
+    "default_title": "Aineurit Prompt Hub"
   },
   "permissions": ["storage"],
   "icons": {
