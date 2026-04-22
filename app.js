@@ -548,10 +548,11 @@ function closeCategoryMenu() {
 
 /* ── Variables modal ── */
 function extractVariables(text) {
-  const regex = /\{\{([^{}]+?)\}\}/g;
+  // matches {{var}} or {var} — captures group 1 (double) or group 2 (single)
+  const regex = /\{\{([^{}]+?)\}\}|\{([^{}]+?)\}/g;
   const matches = []; let m;
   while ((m = regex.exec(text)) !== null) {
-    const name = m[1].trim();
+    const name = (m[1] || m[2]).trim();
     if (!matches.includes(name) && name.length < 80) matches.push(name);
   }
   return matches;
@@ -612,9 +613,10 @@ refs.btnConfirmVar.addEventListener('click', () => {
   let result = currentTemplate;
   refs.varInputs.querySelectorAll('.var-field').forEach(inp => {
     const name = inp.getAttribute('data-var');
-    const val  = inp.value || `{{${name}}}`;
+    const val  = inp.value || `{${name}}`;
     const esc  = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re   = new RegExp(`\\{\\{${esc}\\}\\}`, 'g');
+    // replace both {{var}} and {var} occurrences
+    const re   = new RegExp(`\\{\\{${esc}\\}\\}|\\{${esc}\\}`, 'g');
     result = result.replace(re, val);
   });
   refs.varModal.classList.add('hidden');
