@@ -164,6 +164,7 @@ const refs = {
 
   emptyState: $('emptyState'),
   editorForm: $('editorForm'),
+  promptHighlight: $('promptHighlight'),
   catPill: $('catPill'),
   catDot: $('catDot'),
   catLabel: $('catLabel'),
@@ -372,6 +373,22 @@ function hideEditor() {
 function updateBodyMeta() {
   const t = refs.promptBody.value;
   refs.bodyMeta.textContent = t.length + ' chars';
+  syncHighlight(t);
+}
+
+function syncHighlight(text) {
+  // Escape HTML then wrap {{var}} / {var} tokens in a coloured span
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  const highlighted = escaped.replace(
+    /\{\{[^{}]+?\}\}|\{[^{}]+?\}/g,
+    '<span class="var-token">$&</span>'
+  );
+  refs.promptHighlight.innerHTML = highlighted;
+  // Keep scroll in sync with the textarea
+  refs.promptHighlight.scrollTop = refs.promptBody.scrollTop;
 }
 
 /* ============================================================
@@ -745,6 +762,9 @@ refs.promptBody.addEventListener('input', () => {
   if (!state.selectedId) return;
   const p = state.prompts.find(p => p.id === state.selectedId);
   if (p) { p.body = refs.promptBody.value; p.updatedAt = Date.now(); saveData(); }
+});
+refs.promptBody.addEventListener('scroll', () => {
+  refs.promptHighlight.scrollTop = refs.promptBody.scrollTop;
 });
 
 refs.btnImport.addEventListener('click', () => refs.importFile.click());

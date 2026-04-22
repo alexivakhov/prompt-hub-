@@ -515,7 +515,28 @@ body::before {
   display: flex;
   overflow: hidden;
 }
+/* Highlight overlay — sits behind the textarea */
+.prompt-highlight {
+  position: absolute;
+  inset: 16px 20px 32px 20px; /* mirrors body-card padding, clears body-meta */
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+.var-token {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .body-card textarea {
+  position: relative;
+  z-index: 1;
   flex: 1;
   border: none;
   outline: none;
@@ -524,7 +545,8 @@ body::before {
   font-family: inherit;
   font-size: 13.5px;
   line-height: 1.75;
-  color: var(--text);
+  color: transparent;
+  caret-color: var(--text);
 }
 .body-card textarea::placeholder { color: var(--text-faint); }
 .body-meta {
